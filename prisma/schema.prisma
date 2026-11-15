@@ -1,0 +1,305 @@
+// One company, many brands, one database.
+//
+// Every table that holds business data carries a brandId. Money is stored as
+// integer centavos everywhere; nothing in this schema is a float.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Company structure ─────────────────────────────
+
+model Brand {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  /// Short code used in URLs and by bots, e.g. "ogimi".
+  slug      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  connections ChannelConnection[]
+  products    Product[]
+  orders      Order[]
+  entries     JournalEntry[]
+  apiKeys     ApiKey[]
+}
+
+/// A place stock physically sits. There is one today; the model allows more.
+model Warehouse {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  /// Orders ship from the default warehouse unless told otherwise.
+  isDefault Boolean  @default(false)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  movements StockMovement[]
+}
+
+// ───────────────────────────────── Channels ──────────────────────────────────
+
+enum Channel {
+  PANCAKE
+  SHOPIFY
+}
+
+/// How one brand is wired to one sales channel.
+model ChannelConnection {
+  id      String  @id @default(cuid())
+  brandId String
+  brand   Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  channel Channel
+  label   String
+
+  /// Random token in the webhook URL path. Identifies the brand.
+  webhookKey    String  @unique
+  /// PANCAKE: a header secret we generate and the operator pastes into Pancake.
+  /// SHOPIFY: the app's signing secret, used to verify the HMAC header.
+  /// Stored encrypted.
+  webhookSecret String?
+
+  /// PANCAKE: shop id. SHOPIFY: the *.myshopify.com domain.
+  externalShopId String?
+  /// API key / admin access token for backfills. Stored encrypted.
+  apiSecret      String?
+
+  lastEventAt  DateTime?
+  lastSyncAt   DateTime?
+  lastError    String?
+  createdAt    DateTime  @default(now())
+
+  events WebhookEvent[]
+  orders Order[]
+
+  @@index([brandId])
+}
+
+/// Every webhook delivery, saved verbatim BEFORE anything is done with it.
+/// If processing fails the row stays PENDING/ERROR and the cron retries it, so
+/// an order is never lost to a bug in the mapper.
+model WebhookEvent {
+  id           String            @id @default(cuid())
+  connectionId String
+  connection   ChannelConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  receivedAt   DateTime          @default(now())
+  topic        String?
+  payload      String
+  /// PENDING | APPLIED | IGNORED | REJECTED | ERROR
+  status       String            @default("PENDING")
+  attempts     Int               @default(0)
+  note         String?
+  processedAt  DateTime?
+
+  @@index([status, receivedAt])
+  @@index([connectionId, receivedAt])
+}
+
+// ────────────────────────────────── Orders ───────────────────────────────────
+
+/// The one shape every order takes, whichever channel it came from.
+enum OrderStatus {
+  NEW
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  RETURNING
+  RETURNED
+  CANCELLED
+}
+
+model Order {
+  id           String            @id @default(cuid())
+  brandId      String
+  brand        Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  connectionId String
+  connection   ChannelConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  channel      Channel
+  /// The channel's own id for the order.
+  externalId   String
+  /// Human-facing order number when the channel has one.
+  displayId    String?
+
+  status    OrderStatus
+  /// The channel's own status text, kept for audit.
+  rawStatus String?
+
+  /// When the customer placed it.
+  placedAt    DateTime
+  shippedAt   DateTime?
+  deliveredAt DateTime?
+  returnedAt  DateTime?
+
+  /// What the customer pays in total (items + shipping charged − discount).
+  totalCentavos       Int     @default(0)
+  /// Shipping the customer was charged, included in totalCentavos.
+  shippingCentavos    Int     @default(0)
+  discountCentavos    Int     @default(0)
+  /// What the courier charges US for the parcel, when the channel reports it.
+  courierFeeCentavos  Int     @default(0)
+  /// True when the customer pays the courier on delivery.
+  isCod               Boolean @default(true)
+  isAbandonedCart     Boolean @default(false)
+
+  customerName String?
+  phone        String?
+  province     String?
+  courier      String?
+  returnReason String?
+
+  // Attribution
+  landingLink String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmContent  String?
+
+  /// Soft exclusion: hidden from every number, never deleted.
+  excludedAt     DateTime?
+  excludedReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items OrderItem[]
+
+  @@unique([connectionId, externalId])
+  @@index([brandId, placedAt])
+  @@index([brandId, status])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sku       String?
+  name      String?
+  quantity  Int     @default(1)
+  /// Selling price of ONE unit.
+  unitPriceCentavos Int @default(0)
+
+  /// Set when the SKU matches a Product of the same brand.
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  /// The product's cost at the moment this line first shipped. Frozen so a later
+  /// cost change never rewrites the profit of an old order.
+  unitCostCentavos Int?
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// ───────────────────────────────── Warehouse ─────────────────────────────────
+
+model Product {
+  id      String @id @default(cuid())
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  sku     String
+  name    String
+  /// Moving-average cost of one unit. Updated on every stock receipt.
+  unitCostCentavos Int     @default(0)
+  /// Dashboard warns when on-hand falls to this.
+  reorderPoint     Int     @default(0)
+  active           Boolean @default(true)
+  createdAt        DateTime @default(now())
+
+  movements StockMovement[]
+  items     OrderItem[]
+
+  @@unique([brandId, sku])
+}
+
+enum StockMovementType {
+  /// Stock arriving from a supplier.
+  RECEIPT
+  /// Leaving for a customer (order shipped).
+  SHIPMENT
+  /// Coming back from a customer (order returned).
+  RETURN
+  /// A count correction, damage, or write-off.
+  ADJUSTMENT
+  /// Between two warehouses (one row out, one row in).
+  TRANSFER
+}
+
+/// Stock is never stored as a number that gets overwritten. On-hand is the sum
+/// of these rows, so every unit can be traced to the event that moved it.
+model StockMovement {
+  id          String            @id @default(cuid())
+  productId   String
+  product     Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warehouseId String
+  warehouse   Warehouse         @relation(fields: [warehouseId], references: [id])
+  type        StockMovementType
+  /// Positive = into the warehouse, negative = out.
+  quantity    Int
+  /// Cost of one unit at the time of the movement.
+  unitCostCentavos Int          @default(0)
+  /// The order that caused it, when one did.
+  orderId     String?
+  note        String?
+  occurredAt  DateTime          @default(now())
+  createdAt   DateTime          @default(now())
+
+  @@index([productId, warehouseId])
+  @@index([orderId])
+}
+
+// ──────────────────────────────── Accounting ─────────────────────────────────
+
+/// A double-entry journal. Every money event in the business becomes one of
+/// these, and every report is a sum over JournalLine. The chart of accounts is
+/// fixed in code (src/lib/accounting/accounts.ts), not in the database.
+model JournalEntry {
+  id      String   @id @default(cuid())
+  brandId String
+  brand   Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  /// The business date the entry belongs to.
+  date    DateTime
+  memo    String
+  /// ORDER | STOCK | MANUAL
+  sourceType String
+  /// The order id / movement id that produced it. Null for manual entries.
+  sourceId   String?
+  createdAt  DateTime @default(now())
+
+  lines JournalLine[]
+
+  @@index([brandId, date])
+  @@index([sourceType, sourceId])
+}
+
+model JournalLine {
+  id          String       @id @default(cuid())
+  entryId     String
+  entry       JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountCode String
+  /// Exactly one of these is non-zero.
+  debitCentavos  Int @default(0)
+  creditCentavos Int @default(0)
+
+  @@index([entryId])
+  @@index([accountCode])
+}
+
+// ─────────────────────────────────── Bots ────────────────────────────────────
+
+/// A key a bot uses to read numbers. Only the SHA-256 of the key is stored.
+model ApiKey {
+  id        String    @id @default(cuid())
+  name      String
+  keyHash   String    @unique
+  /// First characters of the key, so it can be recognised in a list.
+  prefix    String
+  /// Null = may read every brand.
+  brandId   String?
+  brand     Brand?    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+}
