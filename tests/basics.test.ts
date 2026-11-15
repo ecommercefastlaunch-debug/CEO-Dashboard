@@ -15,6 +15,8 @@ describe("money", () => {
   });
   it("formats whole pesos", () => {
     expect(formatPeso(149000)).toBe("₱1,490");
+    expect(formatPeso(120050)).toBe("₱1,201");
+    expect(formatPeso(-120050)).toBe("-₱1,201");
   });
 });
 

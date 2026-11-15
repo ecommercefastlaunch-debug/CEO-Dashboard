@@ -10,6 +10,8 @@
 export type Role = "owner" | "warehouse";
 export const SESSION_COOKIE = "erp_session";
 export const SESSION_DAYS = 30;
+/** Carries a just-created bot key to the settings page, once. */
+export const FLASH_KEY_COOKIE = "erp_new_key";
 
 const enc = new TextEncoder();
 

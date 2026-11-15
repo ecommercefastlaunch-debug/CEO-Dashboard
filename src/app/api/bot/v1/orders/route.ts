@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     period: { label: p.label, timezone: "Asia/Manila" },
     currency: "PHP",
     total_matching: total,
-    returned: orders.length,
+    shown: orders.length,
     orders: orders.map((o) => ({
       brand: o.brand.name,
       channel: o.channel,

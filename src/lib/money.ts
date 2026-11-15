@@ -6,7 +6,8 @@ const pesoExact = new Intl.NumberFormat("en-PH", { style: "currency", currency: 
 
 /** ₱1,490 — whole pesos, for dashboards. */
 export function formatPeso(centavos: number): string {
-  return peso.format(Math.round(centavos / 100));
+  // Round half away from zero, so −₱1,200.50 and ₱1,200.50 show the same digits.
+  return peso.format(Math.sign(centavos) * Math.round(Math.abs(centavos) / 100));
 }
 
 /** ₱1,490.50 — exact, for ledgers. */
