@@ -47,7 +47,24 @@ tests in `tests/` spell them out case by case.
 This is a management ledger for decisions. It is not BIR bookkeeping: there is
 no VAT, no official receipts, no statutory books.
 
-## Setting it up
+## Where it runs
+
+- **App:** Vercel project `ceo-dashboard`, production address
+  https://ceo-dashboard-peach-gamma.vercel.app — region `sin1` (Singapore).
+  Every push to `main` deploys.
+- **Database:** Supabase project `ceo-dashboard` (`ucendvpymiayrrukdevl`,
+  Singapore), reached through the transaction pooler on
+  `aws-0-ap-southeast-1.pooler.supabase.com:6543`.
+- The app logs in as its own database role, `erp_app`. Row-level security is
+  on for every table with a policy for `erp_app` only, so Supabase's public API
+  keys (`anon`, `authenticated`) cannot read anything.
+- `erp_app` cannot change the schema. Schema changes are applied as the
+  `postgres` role (Supabase SQL editor, or a session-pooler `DIRECT_URL` with
+  the postgres password), and a new table needs the same RLS policy and grants
+  as the others.
+- `GET /api/health` answers `{"ok":true}` when the app can reach the database.
+
+## Setting it up from scratch
 
 ### 1. Supabase (the database)
 
