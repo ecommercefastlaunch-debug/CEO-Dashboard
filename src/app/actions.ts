@@ -153,6 +153,26 @@ export async function syncNow(f: FormData) {
   });
 }
 
+/** "Refresh all data": pull recent orders from every channel that has an API key. */
+export async function syncAll(f: FormData) {
+  await requireRole("owner");
+  return attempt(f, "/", async () => {
+    const connections = await prisma.channelConnection.findMany({ where: { apiSecret: { not: null }, brand: { active: true } }, select: { id: true } });
+    if (!connections.length) throw new Error("No channel has an API key saved yet — orders arrive by webhook only. Add a key in Settings to pull history.");
+    const deadline = Date.now() + 50_000;
+    let applied = 0;
+    const failed: string[] = [];
+    for (const c of connections) {
+      if (Date.now() > deadline) break;
+      const r = await syncConnection(c.id, { days: 3, deadline });
+      applied += r.applied;
+      if (!r.ok) failed.push(r.note);
+    }
+    if (failed.length) throw new Error(`Some channels failed: ${failed.join("; ")}`);
+    return `Refreshed: ${applied} order(s) checked across ${connections.length} channel(s).`;
+  });
+}
+
 // ── Bot keys ────────────────────────────────────────────────────────────────
 
 export async function createApiKey(f: FormData) {

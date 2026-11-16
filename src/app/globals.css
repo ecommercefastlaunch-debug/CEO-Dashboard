@@ -1,16 +1,152 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------ */
+/* Design system — the same one B.E.X uses: warm off-white neutrals,   */
+/* a near-black primary, and colour only where it carries meaning.     */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --bg: #faf9f7;
+  --sidebar: #f5f3ee;
+  --surface: #ffffff;
+  --surface-2: #f4f2ec;
+  --border: #eae7e0;
+  --border-strong: #dcd8ce;
+  --text: #1a1917;
+  --text-muted: #6b665e;
+  --text-faint: #9a948a;
+
+  --ink: #1f1e1c;
+  --on-ink: #ffffff;
+  --accent: #b5562d;
+  --accent-soft: #f6ece5;
+
+  --critical: #b23b32;
+  --critical-soft: #f8ebe8;
+  --warning: #9a6a12;
+  --warning-soft: #f7efdf;
+  --healthy: #3f7d52;
+  --healthy-soft: #e9f1e9;
+  --info: #3b6ea8;
+  --info-soft: #e8eff7;
+  --gold: #9a6a12;
+  --rts: #e0620a;
+  --spend: #3b82f6;
+
+  --shadow-card: 0 1px 2px rgba(30, 25, 20, 0.04), 0 1px 3px rgba(30, 25, 20, 0.03);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #191817;
+    --sidebar: #1f1e1c;
+    --surface: #211f1d;
+    --surface-2: #292724;
+    --border: #322f2b;
+    --border-strong: #423e39;
+    --text: #ece9e3;
+    --text-muted: #a29c92;
+    --text-faint: #726c63;
+
+    --ink: #ece9e3;
+    --on-ink: #1a1917;
+    --accent: #d98a68;
+    --accent-soft: #2c2019;
+
+    --critical: #e08a80;
+    --critical-soft: #2c1a17;
+    --warning: #d6a95a;
+    --warning-soft: #2a2113;
+    --healthy: #74b98a;
+    --healthy-soft: #172417;
+    --info: #86aede;
+    --info-soft: #18202b;
+    --gold: #d6a95a;
+    --rts: #ef8b4d;
+    --spend: #6ea8ff;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+}
+
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-sidebar: var(--sidebar);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+  --color-ink: var(--ink);
+  --color-on-ink: var(--on-ink);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-critical: var(--critical);
+  --color-critical-soft: var(--critical-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-healthy: var(--healthy);
+  --color-healthy-soft: var(--healthy-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-gold: var(--gold);
+  --color-rts: var(--rts);
+  --color-spend: var(--spend);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: var(--font-newsreader), ui-serif, Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+html {
+  color-scheme: light dark;
 }
 
 body {
-  background: #fafaf9;
-  color: #1c1917;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.font-serif {
+  letter-spacing: -0.01em;
 }
 
 /* Numbers line up in columns. */
-.num {
+.tnum {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+table {
+  border-collapse: collapse;
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise-in {
+  animation: rise-in 0.45s ease-out both;
+}
+
+@keyframes bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.bar-grow {
+  transform-origin: left center;
+  animation: bar-grow 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in, .bar-grow { animation: none; }
 }

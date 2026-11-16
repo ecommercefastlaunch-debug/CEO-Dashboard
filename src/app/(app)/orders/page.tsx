@@ -1,18 +1,23 @@
 import Link from "next/link";
 import { setOrderExcluded } from "@/app/actions";
-import { Back, Banner, Card, Empty, Filters, PageTitle, td, th } from "@/components/ui";
+import { PageControls } from "@/components/page-controls";
+import { Back, Banner, Card, PageHeader, Pill, cn, tableBody, tableHead, td, th, type Tone } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { formatPeso } from "@/lib/money";
 import { pageContext, type SearchParams } from "@/lib/page-context";
 import type { OrderStatus } from "@/generated/prisma/client";
 
 const STATUSES = ["NEW", "CONFIRMED", "SHIPPED", "DELIVERED", "RETURNING", "RETURNED", "CANCELLED"] as const;
-const TONE: Record<string, string> = {
-  DELIVERED: "bg-emerald-50 text-emerald-700",
-  RETURNED: "bg-red-50 text-red-700",
-  RETURNING: "bg-amber-50 text-amber-700",
-  CANCELLED: "bg-stone-100 text-stone-500",
+const TONE: Record<string, Tone> = {
+  NEW: "neutral",
+  CONFIRMED: "info",
+  SHIPPED: "info",
+  DELIVERED: "healthy",
+  RETURNING: "warning",
+  RETURNED: "critical",
+  CANCELLED: "neutral",
 };
+
 const PAGE = 100;
 
 const when = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -49,36 +54,49 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
   };
   const here = withParam("", null);
   const chip = (active: boolean) =>
-    `rounded-full px-2.5 py-1 text-xs whitespace-nowrap ${active ? "bg-stone-900 text-white" : "bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-100"}`;
+    cn(
+      "whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+      active ? "bg-ink text-on-ink" : "text-text-muted hover:bg-surface-2 hover:text-text",
+    );
 
   return (
     <>
-      <PageTitle title="Orders" hint="Every order from every channel, in one list." />
+      <PageHeader
+        title={ctx.brand ? `Orders — ${ctx.brand.name}` : "Orders"}
+        description="Every order from Pancake, Webcake and Shopify, in one list."
+        actions={<PageControls ctx={ctx} />}
+      />
       <Banner ok={ctx.ok} error={ctx.error} />
-      <Filters ctx={ctx} path="/orders" />
 
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        <Link href={withParam("status", null)} className={chip(!status)}>
-          Any status
-        </Link>
-        {STATUSES.map((s) => (
-          <Link key={s} href={withParam("status", s)} className={chip(status === s)}>
-            {s[0] + s.slice(1).toLowerCase()}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-border bg-surface p-0.5 shadow-card">
+          <Link href={withParam("status", null)} className={chip(!status)}>
+            Any status
           </Link>
-        ))}
-        <span className="mx-1 text-stone-300">|</span>
-        <Link href={withParam("excluded", showExcluded ? null : "1")} className={chip(showExcluded)}>
-          Excluded
-        </Link>
+          {STATUSES.map((s) => (
+            <Link key={s} href={withParam("status", s)} className={chip(status === s)}>
+              {s[0] + s.slice(1).toLowerCase()}
+            </Link>
+          ))}
+        </div>
+        <div className="inline-flex rounded-lg border border-border bg-surface p-0.5 shadow-card">
+          <Link href={withParam("excluded", showExcluded ? null : "1")} className={chip(showExcluded)}>
+            Excluded only
+          </Link>
+        </div>
       </div>
 
-      <Card>
+      <Card
+        flush
+        title={`${total.toLocaleString("en-PH")} order${total === 1 ? "" : "s"}`}
+        subtitle={showExcluded ? "Hidden from every number. Restore one to count it again." : "Newest first. Exclude test or fraud orders to hide them from every number."}
+      >
         {orders.length === 0 ? (
-          <Empty>No orders match.</Empty>
+          <p className="px-4 py-10 text-center text-[13px] text-text-faint">No orders match.</p>
         ) : (
-          <div className="-mx-2 overflow-x-auto">
-            <table className="w-full min-w-[760px]">
-              <thead>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[780px]">
+              <thead className={tableHead}>
                 <tr>
                   <th className={th}>Order</th>
                   <th className={th}>Placed</th>
@@ -89,41 +107,43 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
                   <th className={th} />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-stone-100">
+              <tbody className={tableBody}>
                 {orders.map((o) => (
-                  <tr key={o.id} className="align-top">
+                  <tr key={o.id} className="align-top hover:bg-surface-2/50">
                     <td className={td}>
                       <div className="font-medium">{o.displayId ?? o.externalId}</div>
-                      <div className="text-xs text-stone-500">
+                      <div className="text-xs text-text-faint">
                         {o.brand.name} · {o.channel === "PANCAKE" ? "Pancake" : "Shopify"}
                       </div>
                     </td>
-                    <td className={`${td} whitespace-nowrap text-stone-600`}>{when.format(o.placedAt)}</td>
+                    <td className={`${td} whitespace-nowrap text-text-muted`}>{when.format(o.placedAt)}</td>
                     <td className={td}>
                       <div>{o.customerName ?? "—"}</div>
-                      <div className="text-xs text-stone-500">{o.province ?? ""}</div>
+                      <div className="text-xs text-text-faint">{o.province ?? ""}</div>
                     </td>
                     <td className={td}>
                       {o.items.map((it, i) => (
                         <div key={i} className="text-xs">
                           {it.quantity} × {it.name ?? it.sku ?? "item"}
-                          {!it.productId ? <span className="ml-1 text-amber-700" title="This SKU isn't in your product list">(no product)</span> : null}
+                          {!it.productId ? <span className="ml-1 text-warning" title="This SKU isn't in your product list">(no product)</span> : null}
                         </div>
                       ))}
                     </td>
-                    <td className={`${td} num text-right`}>{formatPeso(o.totalCentavos)}</td>
+                    <td className={`${td} text-right font-medium tnum`}>{formatPeso(o.totalCentavos)}</td>
                     <td className={td}>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TONE[o.status] ?? "bg-sky-50 text-sky-700"}`}>
-                        {o.status[0] + o.status.slice(1).toLowerCase()}
-                      </span>
-                      {o.excludedAt ? <div className="mt-1 text-xs text-stone-500">{o.excludedReason}</div> : null}
+                      <Pill tone={TONE[o.status] ?? "neutral"}>{o.status.toLowerCase()}</Pill>
+                      {o.excludedAt ? <div className="mt-1 text-xs text-text-faint">{o.excludedReason}</div> : null}
                     </td>
                     <td className={`${td} text-right`}>
                       <form action={setOrderExcluded}>
                         <Back to={here} />
                         <input type="hidden" name="orderId" value={o.id} />
                         <input type="hidden" name="exclude" value={o.excludedAt ? "0" : "1"} />
-                        <button type="submit" className="text-xs text-stone-500 underline hover:text-stone-900" title={o.excludedAt ? "Count this order again" : "Hide this order from every number (test or fraud). Can be undone."}>
+                        <button
+                          type="submit"
+                          className="h-7 rounded-md px-2 text-xs font-medium text-text-muted hover:bg-surface-2 hover:text-text"
+                          title={o.excludedAt ? "Count this order again" : "Hide this order from every number (test or fraud). Can be undone."}
+                        >
                           {o.excludedAt ? "Restore" : "Exclude"}
                         </button>
                       </form>
@@ -134,7 +154,11 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
             </table>
           </div>
         )}
-        {total > orders.length ? <p className="mt-3 text-xs text-stone-500">Showing the newest {orders.length} of {total}. Narrow the date range or status to see the rest.</p> : null}
+        {total > orders.length ? (
+          <p className="border-t border-border px-4 py-2.5 text-xs text-text-muted">
+            Showing the newest {orders.length} of {total}. Narrow the period or status to see the rest.
+          </p>
+        ) : null}
       </Card>
     </>
   );

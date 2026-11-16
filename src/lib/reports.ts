@@ -4,7 +4,7 @@
 import { prisma } from "@/lib/prisma";
 import { A, ACCOUNTS, account } from "@/lib/accounting/accounts";
 import type { Balances } from "@/lib/accounting/postings";
-import type { Period } from "@/lib/period";
+import { phDayKey, type Period } from "@/lib/period";
 
 export interface Scope {
   /** Null = all brands. */
@@ -81,6 +81,8 @@ export function position(b: Balances): Position {
 export interface Funnel {
   orders: number;
   byStatus: Record<string, number>;
+  /** Pesos ordered, per status. */
+  valueByStatus: Record<string, number>;
   /** Value of everything ordered in the period, whatever became of it. */
   orderedValue: number;
   delivered: number;
@@ -103,17 +105,19 @@ export async function orderFunnel(scope: Scope, period: Period): Promise<Funnel>
     _sum: { totalCentavos: true },
   });
   const byStatus: Record<string, number> = {};
+  const valueByStatus: Record<string, number> = {};
   let orders = 0;
   let orderedValue = 0;
   for (const r of rows) {
     byStatus[r.status] = r._count._all;
+    valueByStatus[r.status] = r._sum.totalCentavos ?? 0;
     orders += r._count._all;
     orderedValue += r._sum.totalCentavos ?? 0;
   }
   const delivered = byStatus.DELIVERED ?? 0;
   const returned = (byStatus.RETURNED ?? 0) + (byStatus.RETURNING ?? 0);
   const inFlight = (byStatus.NEW ?? 0) + (byStatus.CONFIRMED ?? 0) + (byStatus.SHIPPED ?? 0);
-  return { orders, byStatus, orderedValue, delivered, returned, inFlight };
+  return { orders, byStatus, valueByStatus, orderedValue, delivered, returned, inFlight };
 }
 
 export interface StockRow {
@@ -216,6 +220,16 @@ export interface Overview {
   costPerOrder: number | null;
   /** Delivered ÷ (delivered + returned), of orders placed in the period. */
   deliveredRate: number | null;
+  /**
+   * What the ads could cost before the period stops making money: sales minus
+   * cost of goods minus every non-ad expense. Null when there were no sales.
+   */
+  affordableAds: number | null;
+  /**
+   * affordableAds ÷ actual ad spend — the B.E.X "safety margin" idea. Below 1×
+   * the ads cost more than the sales can carry. Null with no ad spend.
+   */
+  headroom: number | null;
 }
 
 export async function overview(scope: Scope, period: Period): Promise<Overview> {
@@ -227,6 +241,7 @@ export async function overview(scope: Scope, period: Period): Promise<Overview> 
   ]);
   const pnl = profitAndLoss(periodBalances);
   const settled = funnel.delivered + funnel.returned;
+  const affordableAds = pnl.sales > 0 ? pnl.sales - pnl.cogs - (pnl.totalExpenses - pnl.advertising) : null;
   return {
     pnl,
     position: position(allBalances),
@@ -235,7 +250,68 @@ export async function overview(scope: Scope, period: Period): Promise<Overview> 
     roas: pnl.advertising > 0 ? pnl.sales / pnl.advertising : null,
     costPerOrder: funnel.orders > 0 && pnl.advertising > 0 ? Math.round(pnl.advertising / funnel.orders) : null,
     deliveredRate: settled > 0 ? funnel.delivered / settled : null,
+    affordableAds,
+    headroom: affordableAds != null && pnl.advertising > 0 ? affordableAds / pnl.advertising : null,
   };
 }
 
 export { account };
+
+export interface DayPoint {
+  /** Manila calendar day, YYYY-MM-DD. */
+  day: string;
+  /** Sales booked that day (orders delivered that day). */
+  sales: number;
+  advertising: number;
+  /** Orders placed that day, and their value. */
+  orders: number;
+  orderedValue: number;
+  /** Value of that day's orders that came back, or were cancelled. */
+  returnedValue: number;
+  cancelledValue: number;
+}
+
+/** Day-by-day sales, ad spend and orders for the chart. Every day is present, zeros included. */
+export async function dailySeries(scope: Scope, period: Period): Promise<DayPoint[]> {
+  const brand = scope.brandId ?? undefined;
+  const [lines, orders] = await Promise.all([
+    prisma.journalLine.findMany({
+      where: { accountCode: { in: [A.SALES, A.ADVERTISING] }, entry: { brandId: brand, date: { gte: period.from, lt: period.to } } },
+      select: { accountCode: true, debitCentavos: true, creditCentavos: true, entry: { select: { date: true } } },
+    }),
+    prisma.order.findMany({
+      where: { brandId: brand, placedAt: { gte: period.from, lt: period.to }, excludedAt: null, isAbandonedCart: false },
+      select: { placedAt: true, totalCentavos: true, status: true },
+    }),
+  ]);
+
+  const days = new Map<string, DayPoint>();
+  for (let t = period.from.getTime(); t < period.to.getTime(); t += 24 * 60 * 60 * 1000) {
+    const day = phDayKey(new Date(t));
+    days.set(day, { day, sales: 0, advertising: 0, orders: 0, orderedValue: 0, returnedValue: 0, cancelledValue: 0 });
+  }
+  for (const l of lines) {
+    const p = days.get(phDayKey(l.entry.date));
+    if (!p) continue;
+    if (l.accountCode === A.SALES) p.sales += l.creditCentavos - l.debitCentavos;
+    else p.advertising += l.debitCentavos - l.creditCentavos;
+  }
+  for (const o of orders) {
+    const p = days.get(phDayKey(o.placedAt));
+    if (!p) continue;
+    p.orders += 1;
+    p.orderedValue += o.totalCentavos;
+    if (o.status === "RETURNED" || o.status === "RETURNING") p.returnedValue += o.totalCentavos;
+    if (o.status === "CANCELLED") p.cancelledValue += o.totalCentavos;
+  }
+  return [...days.values()];
+}
+
+/** When the newest order update arrived, across the brands in scope. */
+export async function lastActivity(scope: Scope): Promise<{ lastEventAt: Date | null; lastSyncAt: Date | null }> {
+  const agg = await prisma.channelConnection.aggregate({
+    where: { brandId: scope.brandId ?? undefined },
+    _max: { lastEventAt: true, lastSyncAt: true },
+  });
+  return { lastEventAt: agg._max.lastEventAt, lastSyncAt: agg._max.lastSyncAt };
+}

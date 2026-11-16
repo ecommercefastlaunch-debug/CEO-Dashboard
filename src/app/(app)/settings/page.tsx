@@ -9,20 +9,20 @@ import {
   setDefaultWarehouse,
   syncNow,
 } from "@/app/actions";
-import { Back, Banner, Button, Card, Empty, Field, PageTitle, inputClass, td, th } from "@/components/ui";
+import { Back, Banner, Button, Card, Field, PageHeader, Pill, cn, inputClass, tableBody, tableHead, td, th, type Tone } from "@/components/ui";
 import { FLASH_KEY_COOKIE } from "@/lib/auth";
 import { decryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 import { pageContext, type SearchParams } from "@/lib/page-context";
 
 const when = new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-const EVENT_TONE: Record<string, string> = { APPLIED: "text-emerald-700", ERROR: "text-red-700", REJECTED: "text-red-700", PENDING: "text-amber-700", IGNORED: "text-stone-500" };
+const EVENT_TONE: Record<string, Tone> = { APPLIED: "healthy", ERROR: "critical", REJECTED: "critical", PENDING: "warning", IGNORED: "neutral" };
 
 function Copyable({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-xs font-medium text-stone-500">{label}</div>
-      <code className="mt-0.5 block overflow-x-auto rounded-md bg-stone-100 px-2 py-1.5 font-mono text-xs whitespace-nowrap select-all">{value}</code>
+      <div className="text-xs font-medium text-text-muted">{label}</div>
+      <code className="mt-1 block overflow-x-auto whitespace-nowrap rounded-md border border-border bg-surface-2 px-2.5 py-1.5 font-mono text-xs text-text select-all">{value}</code>
     </div>
   );
 }
@@ -51,22 +51,22 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
 
   return (
     <>
-      <PageTitle title="Settings" />
+      <PageHeader title="Settings" description="Brands, warehouses, the stores orders come from, and the keys your bots use." />
       <Banner ok={ctx.ok} error={ctx.error} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Brands">
           {ctx.brands.length ? (
-            <ul className="mb-4 divide-y divide-stone-100">
+            <ul className="mb-4 divide-y divide-border">
               {ctx.brands.map((b) => (
                 <li key={b.id} className="flex items-center justify-between py-2 text-sm">
                   <span className="font-medium">{b.name}</span>
-                  <code className="font-mono text-xs text-stone-500">{b.slug}</code>
+                  <code className="font-mono text-xs text-text-muted">{b.slug}</code>
                 </li>
               ))}
             </ul>
           ) : (
-            <Empty>No brands yet.</Empty>
+            <p className="mb-4 text-[13px] text-text-faint">No brands yet.</p>
           )}
           <form action={createBrand} className="flex items-end gap-2">
             <Back to="/settings" />
@@ -81,17 +81,17 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
 
         <Card title="Warehouses">
           {warehouses.length ? (
-            <ul className="mb-4 divide-y divide-stone-100">
+            <ul className="mb-4 divide-y divide-border">
               {warehouses.map((w) => (
                 <li key={w.id} className="flex items-center justify-between gap-2 py-2 text-sm">
                   <span className="font-medium">{w.name}</span>
                   {w.isDefault ? (
-                    <span className="text-xs text-stone-500">orders ship from here</span>
+                    <span className="text-xs text-text-muted">orders ship from here</span>
                   ) : (
                     <form action={setDefaultWarehouse}>
                       <Back to="/settings" />
                       <input type="hidden" name="warehouseId" value={w.id} />
-                      <button type="submit" className="text-xs text-stone-500 underline hover:text-stone-900">
+                      <button type="submit" className="text-xs text-text-muted underline hover:text-text">
                         Ship orders from here
                       </button>
                     </form>
@@ -100,7 +100,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               ))}
             </ul>
           ) : (
-            <Empty>None yet — one called &ldquo;Main warehouse&rdquo; is created when the first order ships.</Empty>
+            <p className="mb-4 text-[13px] text-text-faint">None yet — one called &ldquo;Main warehouse&rdquo; is created when the first order ships.</p>
           )}
           <form action={createWarehouse} className="flex items-end gap-2">
             <Back to="/settings" />
@@ -117,31 +117,31 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
       <div className="mt-4">
         <Card title="Sales channels">
           {connections.length === 0 ? (
-            <Empty>No channels connected yet.</Empty>
+            <p className="mb-4 text-[13px] text-text-faint">No channels connected yet.</p>
           ) : (
             <ul className="mb-5 grid gap-4">
               {connections.map((c) => {
                 const url = `${origin}/api/webhooks/${c.channel === "PANCAKE" ? "pancake" : "shopify"}/${c.webhookKey}`;
                 return (
-                  <li key={c.id} className="min-w-0 rounded-lg border border-stone-200 p-4">
+                  <li key={c.id} className="min-w-0 rounded-xl border border-border bg-surface-2/30 p-4">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <div>
                         <span className="font-medium">{c.label}</span>
-                        <span className="ml-2 text-xs text-stone-500">
+                        <span className="ml-2 text-xs text-text-muted">
                           {c.brand.name} · {c.channel === "PANCAKE" ? "Pancake POS" : "Shopify"} · {c._count.orders} order{c._count.orders === 1 ? "" : "s"}
                         </span>
                       </div>
-                      <span className="text-xs text-stone-500">
+                      <span className="text-xs text-text-muted">
                         {c.lastEventAt ? `Last order update ${when.format(c.lastEventAt)}` : "No order received yet"}
                       </span>
                     </div>
-                    {c.lastError ? <p className="mt-2 rounded-md bg-red-50 px-2 py-1.5 text-xs text-red-800">Last error: {c.lastError}</p> : null}
+                    {c.lastError ? <p className="mt-2 rounded-md border border-critical/40 bg-critical-soft px-2.5 py-1.5 text-xs text-critical">Last error: {c.lastError}</p> : null}
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       <Copyable label="Webhook address — paste into the channel" value={url} />
                       {c.channel === "PANCAKE" ? (
                         <Copyable label="Request header to add in Pancake: x-webhook-secret" value={secretOf(c.webhookSecret) ?? "(unreadable — SESSION_SECRET changed; re-create this connection)"} />
                       ) : (
-                        <div className="min-w-0 text-xs text-stone-500">
+                        <div className="min-w-0 text-xs text-text-muted">
                           <div className="font-medium">In Shopify</div>
                           Settings → Notifications → Webhooks. Add this address for: Order creation, Order update, Order cancellation, Order fulfillment, Order payment. Format: JSON.
                         </div>
@@ -158,10 +158,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                             <option value="30">Last 30 days</option>
                             <option value="90">Last 90 days</option>
                           </select>
-                          <Button variant="quiet">Pull orders now</Button>
+                          <Button variant="secondary">Pull orders now</Button>
                         </form>
                       ) : (
-                        <span className="text-xs text-stone-500">No API key saved — webhooks only, no backfill.</span>
+                        <span className="text-xs text-text-muted">No API key saved — webhooks only, no backfill.</span>
                       )}
                       {c._count.orders === 0 ? (
                         <form action={deleteConnection}>
@@ -178,7 +178,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
           )}
 
           {ctx.brands.length === 0 ? null : (
-            <form action={createConnection} className="grid gap-3 border-t border-stone-200 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+            <form action={createConnection} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-3">
               <Back to="/settings" />
               <Field label="Brand">
                 <select name="brandId" required className={inputClass}>
@@ -214,21 +214,21 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Card title="Bot access">
-          <p className="mb-3 text-sm text-stone-600">
+          <p className="mb-3 text-sm text-text-muted">
             A key lets a bot read numbers — sales, profit, orders, stock. It cannot change anything, and never sees customer names or phone numbers.
           </p>
           {newKey ? (
-            <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+            <div className="mb-4 rounded-lg border border-healthy/40 bg-healthy-soft p-3">
               <Copyable label="Your new key — copy it now, it will not be shown again" value={newKey} />
             </div>
           ) : null}
           {keys.length ? (
-            <ul className="mb-4 divide-y divide-stone-100">
+            <ul className="mb-4 divide-y divide-border">
               {keys.map((k) => (
                 <li key={k.id} className="flex items-center justify-between gap-2 py-2 text-sm">
                   <div>
                     <span className="font-medium">{k.name}</span>
-                    <span className="ml-2 text-xs text-stone-500">
+                    <span className="ml-2 text-xs text-text-muted">
                       <code className="font-mono">{k.prefix}…</code> · {k.brand ? k.brand.name : "all brands"} ·{" "}
                       {k.lastUsedAt ? `used ${when.format(k.lastUsedAt)}` : "never used"}
                     </span>
@@ -236,7 +236,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
                   <form action={revokeApiKey}>
                     <Back to="/settings" />
                     <input type="hidden" name="keyId" value={k.id} />
-                    <button type="submit" className="text-xs text-stone-500 underline hover:text-red-700">
+                    <button type="submit" className="text-xs text-text-muted underline hover:text-critical">
                       Revoke
                     </button>
                   </form>
@@ -263,7 +263,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               <Button>Create key</Button>
             </div>
           </form>
-          <div className="mt-4 space-y-1 border-t border-stone-200 pt-3 text-xs text-stone-500">
+          <div className="mt-4 space-y-1 border-t border-border pt-3 text-xs text-text-muted">
             <div>
               Send the key as <code className="font-mono">Authorization: Bearer &lt;key&gt;</code> to:
             </div>
@@ -273,31 +273,33 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
           </div>
         </Card>
 
-        <Card title="Recent order updates received">
+        <Card flush title="Recent order updates received" subtitle="The last 15 webhook deliveries, newest first">
           {events.length === 0 ? (
-            <Empty>Nothing received yet.</Empty>
+            <p className="px-4 py-8 text-center text-[13px] text-text-faint">Nothing received yet.</p>
           ) : (
-            <table className="w-full">
-              <thead>
-                <tr>
-                  <th className={th}>When</th>
-                  <th className={th}>Channel</th>
-                  <th className={th}>Result</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {events.map((e) => (
-                  <tr key={e.id} className="align-top">
-                    <td className={`${td} whitespace-nowrap text-stone-600`}>{when.format(e.receivedAt)}</td>
-                    <td className={td}>{e.connection.label}</td>
-                    <td className={td}>
-                      <span className={`text-xs font-medium ${EVENT_TONE[e.status] ?? ""}`}>{e.status[0] + e.status.slice(1).toLowerCase()}</span>
-                      <div className="text-xs text-stone-500">{e.note}</div>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[420px]">
+                <thead className={tableHead}>
+                  <tr>
+                    <th className={th}>When</th>
+                    <th className={th}>Channel</th>
+                    <th className={th}>Result</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className={tableBody}>
+                  {events.map((e) => (
+                    <tr key={e.id} className="align-top">
+                      <td className={`${td} whitespace-nowrap text-text-muted`}>{when.format(e.receivedAt)}</td>
+                      <td className={td}>{e.connection.label}</td>
+                      <td className={td}>
+                        <Pill tone={EVENT_TONE[e.status] ?? "neutral"}>{e.status.toLowerCase()}</Pill>
+                        <div className={cn("mt-0.5 text-xs text-text-faint")}>{e.note}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       </div>
